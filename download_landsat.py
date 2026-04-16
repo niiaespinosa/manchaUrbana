@@ -129,22 +129,42 @@ def crop_and_download_band(url, output_path):
                 meta = src.meta.copy()
                 data = src.read(1, window=window)
                 
-                # Update metadata for the new cropped image
+                # Update metadata shape and transform for the new cropped image
                 meta.update({
                     "height": window.height,
                     "width": window.width,
                     "transform": rasterio.windows.transform(window, src.transform)
                 })
 
-        # Save to disk
         # Make sure we don't save empty/all-nan arrays if the bounding box somehow misses the valid data area
         import numpy as np
         if np.all(data == src.nodata):
             print(f"Skipping {output_path.name} (only nodata in bounding box)")
             return False
 
+        # --- SURFACE REFLECTANCE TRANSFORMATION ---
+        # USGS Landsat Collection 2 Level-2 scaling: SR = (DN * 0.0000275) - 0.2
+        # We process it as float32 to keep precision and handle missing pixels as NaN
+        data_float = np.where(
+            data == src.nodata,
+            np.nan,  # Ensure empty edges/clouds masks are registered strictly as NaN
+            (data.astype(np.float32) * 0.0000275) - 0.2
+        )
+
+        # Skip images that are on the edge of the satellite path (e.g., more than 5% missing data)
+        nan_ratio = np.isnan(data_float).sum() / data_float.size
+        if nan_ratio > 0.05:
+            print(f"       Skipping {output_path.name}: {nan_ratio:.1%} missing data (satellite edge).")
+            return False
+
+        meta.update({
+            "dtype": "float32",
+            "nodata": np.nan
+        })
+
+        # Save to disk as the mathematically ready float array
         with rasterio.open(output_path, "w", **meta) as dst:
-            dst.write(data, 1)
+            dst.write(data_float, 1)
         
         return True
         
@@ -167,8 +187,10 @@ def main():
         modifier=planetary_computer.sign_inplace,
     )
 
-    # 2. Iterate year by year to avoid exhausting STAC limits in one query
-    for year in range(START_YEAR, END_YEAR + 1):
+    # 2. Iterate over the specific test years to guarantee one date per satellite
+    TEST_YEARS = [2000, 2014, 2022]
+    
+    for year in TEST_YEARS:
         year_str = str(year)
         
         # Skip if year is fully completed in history
@@ -199,7 +221,11 @@ def main():
                 scenes_by_month[month_key].append(item)
                 
             # Process each month
+            year_done = False
             for month_key in sorted(scenes_by_month.keys()):
+                if year_done:
+                    break
+                
                 # Skip if month is already processed
                 if history[year_str].get(month_key) == "COMPLETED":
                     continue
@@ -260,6 +286,8 @@ def main():
                     
                     if success_all_bands:
                         print(f"       Successfully completed {acq_date}")
+                        year_done = True
+                        break
                     else:
                         print(f"       Failed/Incomplete for {acq_date}")
                 
