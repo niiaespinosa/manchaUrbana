@@ -1,0 +1,6 @@
+# Virtual environments
+.venv
+uv.lock
+
+#User
+images/
