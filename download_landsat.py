@@ -187,10 +187,8 @@ def main():
         modifier=planetary_computer.sign_inplace,
     )
 
-    # 2. Iterate over the specific test years to guarantee one date per satellite
-    TEST_YEARS = [2000, 2014, 2022]
-    
-    for year in TEST_YEARS:
+    # 2. Iterate year by year to avoid exhausting STAC limits in one query
+    for year in range(START_YEAR, END_YEAR + 1):
         year_str = str(year)
         
         # Skip if year is fully completed in history
@@ -221,10 +219,7 @@ def main():
                 scenes_by_month[month_key].append(item)
                 
             # Process each month
-            year_done = False
             for month_key in sorted(scenes_by_month.keys()):
-                if year_done:
-                    break
                 
                 # Skip if month is already processed
                 if history[year_str].get(month_key) == "COMPLETED":
@@ -286,8 +281,6 @@ def main():
                     
                     if success_all_bands:
                         print(f"       Successfully completed {acq_date}")
-                        year_done = True
-                        break
                     else:
                         print(f"       Failed/Incomplete for {acq_date}")
                 
