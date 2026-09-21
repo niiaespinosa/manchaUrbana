@@ -1,7 +1,7 @@
 [project]
 name = "manchaurbana"
 version = "0.1.0"
-description = "Add your description here"
+description = "Etapas tempranas de procesamiento de imágenes de mancha urbana con Machine LEarning e imágenes satelitales"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
